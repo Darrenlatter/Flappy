@@ -14,7 +14,6 @@
         border: 4px solid #34495e;
         border-radius: 8px;
         background-color: #f1f1f1;
-        /* Fixed missing semicolon in original CSS */
         background-image: url('background.jpg'); 
         background-repeat: no-repeat;
         background-attachment: fixed;
@@ -53,33 +52,31 @@
 // SCOUT EDIT ZONE: Change these values to customize your game!
 // =========================================================================
 const GAME_CONFIG = {
-    // Canvas dimensions
     canvasWidth: 960,
     canvasHeight: 540,
 
     // Game Physics
-    playerGravity: 0.05,     // How fast the player falls (higher = heavier)
-    playerBoost: -0.2,       // How strong the button push is (more negative = higher jump)
-    obstacleSpeed: -2,       // How fast obstacles move left (negative numbers move left)
-    spawnRate: 150,          // How often a new obstacle appears (lower = more frequent)
+    playerGravity: 0.05,     
+    playerBoost: -0.2,       
+    obstacleSpeed: -2,       
+    spawnRate: 150,          
 
     // Gap spacing rules
-    minGap: 80,              // Smallest possible gap between top and bottom obstacles
-    maxGap: 200,             // Largest possible gap between top and bottom obstacles
-    minObstacleHeight: 20,   // Shortest an obstacle can be
-    maxObstacleHeight: 200,  // Tallest an obstacle can be
+    minGap: 100,              
+    maxGap: 220,             
+    minObstacleHeight: 40,   
+    maxObstacleHeight: 220,  
 
     // Sprite Asset Customization
-    // (If these files don't exist in the same folder, the game falls back to the colors below!)
-    useSprites: true,                    // Change to false to only use flat colors
-    playerSpriteUrl: "player.png",       // e.g., a scout badge, a tent, an astronaut
-    topObstacleSpriteUrl: "stalactite.png", // e.g., a log, a cloud, a lightning bolt
-    botObstacleSpriteUrl: "stalagmite.png", // e.g., a campfire, a tree, a mountain
+    useSprites: true,                    
+    playerSpriteUrl: "player.png",       
+    topObstacleSpriteUrl: "stalactite.png", 
+    botObstacleSpriteUrl: "stalagmite.png", 
 
-    // Fallback Colors (Used if useSprites is false, or images fail to load)
-    playerColor: "#e74c3c",      // Red
-    obstacleColor: "#2ecc71",    // Green
-    textColor: "#ffffff"         // White
+    // Fallback Colors (Used if useSprites is false)
+    playerColor: "#e74c3c",      
+    obstacleColor: "#2ecc71",    
+    textColor: "#ffffff"         
 };
 // =========================================================================
 
@@ -87,24 +84,32 @@ var myGamePiece;
 var myObstacles = [];
 var myScore;
 
-// Preload Image helper
-function createGameImage(src) {
-    var img = new Image();
-    img.src = src;
-    return img;
-}
+// Global image elements
+var playerImg = new Image();
+playerImg.src = GAME_CONFIG.playerSpriteUrl;
 
-// Load assets globally
-var playerImg = createGameImage(GAME_CONFIG.playerSpriteUrl);
-var topObstacleImg = createGameImage(GAME_CONFIG.topObstacleSpriteUrl);
-var botObstacleImg = createGameImage(GAME_CONFIG.botObstacleSpriteUrl);
+var topObstacleImg = new Image();
+topObstacleImg.src = GAME_CONFIG.topObstacleSpriteUrl;
+
+var botObstacleImg = new Image();
+botObstacleImg.src = GAME_CONFIG.botObstacleSpriteUrl;
+
+// Pattern storage variables to prevent stretching
+var topPattern = null;
+var botPattern = null;
+
+// Ensure patterns are created once images load to handle transparency cleanly
+topObstacleImg.onload = function() {
+    if(myGameArea.context) topPattern = myGameArea.context.createPattern(topObstacleImg, 'repeat');
+};
+botObstacleImg.onload = function() {
+    if(myGameArea.context) botPattern = myGameArea.context.createPattern(botObstacleImg, 'repeat');
+};
 
 function startGame() {
-    // Player starts at x: 10, y: 120, sized 40x40 pixels
     myGamePiece = new component(40, 40, GAME_CONFIG.playerColor, 10, 120, "player");
     myGamePiece.gravity = GAME_CONFIG.playerGravity;
     
-    // Score display configuration
     myScore = new component("30px", "Consolas", GAME_CONFIG.textColor, 30, 40, "text");
     myGameArea.start();
 }
@@ -118,6 +123,10 @@ var myGameArea = {
         
         var container = document.getElementById("game-container");
         container.appendChild(this.canvas);
+        
+        // Backup pattern creation if images loaded before canvas initialized
+        if (!topPattern && topObstacleImg.complete) topPattern = this.context.createPattern(topObstacleImg, 'repeat');
+        if (!botPattern && botObstacleImg.complete) botPattern = this.context.createPattern(botObstacleImg, 'repeat');
         
         this.frameNo = 0;
         this.interval = setInterval(updateGameArea, 20);
@@ -148,26 +157,31 @@ function component(width, height, color, x, y, type) {
             ctx.fillText(this.text, this.x, this.y);
         } 
         else if (GAME_CONFIG.useSprites) {
-            // Draw sprite graphics if available
-            try {
-                if (this.type === "player") {
-                    ctx.drawImage(playerImg, this.x, this.y, this.width, this.height);
-                } else if (this.type === "topObstacle") {
-                    ctx.drawImage(topObstacleImg, this.x, this.y, this.width, this.height);
-                } else if (this.type === "botObstacle") {
-                    ctx.drawImage(botObstacleImg, this.x, this.y, this.width, this.height);
-                } else {
-                    ctx.fillStyle = color;
-                    ctx.fillRect(this.x, this.y, this.width, this.height);
-                }
-            } catch(e) {
-                // Fallback to shapes if image rendering errors out
+            if (this.type === "player") {
+                ctx.drawImage(playerImg, this.x, this.y, this.width, this.height);
+            } 
+            else if (this.type === "topObstacle" && topPattern) {
+                // Use translate so the seamless pattern scrolls smoothly along with the obstacle coordinate
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.fillStyle = topPattern;
+                ctx.fillRect(0, 0, this.width, this.height);
+                ctx.restore();
+            } 
+            else if (this.type === "botObstacle" && botPattern) {
+                // Use translate to lock the pattern texture to the obstacle box and avoid distortion
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.fillStyle = botPattern;
+                ctx.fillRect(0, 0, this.width, this.height);
+                ctx.restore();
+            } 
+            else {
                 ctx.fillStyle = color;
                 ctx.fillRect(this.x, this.y, this.width, this.height);
             }
         } 
         else {
-            // Standard shape fallback
             ctx.fillStyle = color;
             ctx.fillRect(this.x, this.y, this.width, this.height);
         }
@@ -217,7 +231,7 @@ function updateGameArea() {
     var x, height, gap, minHeight, maxHeight, minGap, maxGap;
     for (i = 0; i < myObstacles.length; i += 1) {
         if (myGamePiece.crashWith(myObstacles[i])) {
-            return; // Game Over
+            return; 
         } 
     }
     myGameArea.clear();
@@ -233,30 +247,10 @@ function updateGameArea() {
         maxGap = GAME_CONFIG.maxGap;
         gap = Math.floor(Math.random()*(maxGap-minGap+1)+minGap);
         
-        // Width of obstacles is set to 30px here for a chunkier sprite look
-        myObstacles.push(new component(30, height, GAME_CONFIG.obstacleColor, x, 0, "topObstacle"));
-        myObstacles.push(new component(30, x - height - gap, GAME_CONFIG.obstacleColor, x, height + gap, "botObstacle"));
+        // Kept at 40px width for chunkier sprite tile presence
+        myObstacles.push(new component(40, height, GAME_CONFIG.obstacleColor, x, 0, "topObstacle"));
+        myObstacles.push(new component(40, x - height - gap, GAME_CONFIG.obstacleColor, x, height + gap, "botObstacle"));
     }
     
     for (i = 0; i < myObstacles.length; i += 1) {
-        myObstacles[i].x += GAME_CONFIG.obstacleSpeed;
-        myObstacles[i].update();
-    }
-    
-    myScore.text = "SCORE: " + myGameArea.frameNo;
-    myScore.update();
-    myGamePiece.newPos();
-    myGamePiece.update();
-}
-
-function everyinterval(n) {
-    if ((myGameArea.frameNo / n) % 1 == 0) {return true;}
-    return false;
-}
-
-function accelerate(n) {
-    myGamePiece.gravity = n;
-}
-</script>
-</body>
-</html>
+        myObstacles[i].x += GAME_CONFIG.obstacle
