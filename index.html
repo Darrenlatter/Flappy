@@ -13,7 +13,7 @@
     canvas {
         border: 4px solid #34495e;
         border-radius: 8px;
-        background-color: #34495e; /* Solid fallback background color */
+        background-color: #34495e; 
         box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
         display: block;
         margin: 0 auto;
@@ -114,7 +114,6 @@ var myGameArea = {
         
         this.frameNo = 0;
         
-        // Clear any previous game loop if restarting
         if (this.interval) clearInterval(this.interval);
         this.interval = setInterval(updateGameArea, 20);
     },
@@ -142,7 +141,138 @@ function component(width, height, color, x, y, type) {
             return;
         } 
 
-        // Attempt sprite rendering if turned on
         if (GAME_CONFIG.useSprites) {
             try {
-                if (this.type === "player" && player
+                if (this.type === "player" && playerImg.complete && playerImg.naturalWidth !== 0) {
+                    ctx.drawImage(playerImg, this.x, this.y, this.width, this.height);
+                    return;
+                } 
+                else if (this.type === "topObstacle" && topObstacleImg.complete && topObstacleImg.naturalWidth !== 0) {
+                    // FIX: Ensure pattern layout repeats cleanly relative to moving components
+                    topPattern = ctx.createPattern(topObstacleImg, 'repeat');
+                    ctx.save();
+                    ctx.fillStyle = topPattern;
+                    ctx.translate(this.x, this.y);
+                    ctx.fillRect(0, 0, this.width, this.height);
+                    ctx.restore();
+                    return;
+                } 
+                else if (this.type === "botObstacle" && botObstacleImg.complete && botObstacleImg.naturalWidth !== 0) {
+                    // FIX: Re-verify pattern handling inside live loop context
+                    botPattern = ctx.createPattern(botObstacleImg, 'repeat');
+                    ctx.save();
+                    ctx.fillStyle = botPattern;
+                    ctx.translate(this.x, this.y);
+                    ctx.fillRect(0, 0, this.width, this.height);
+                    ctx.restore();
+                    return;
+                }
+            } catch (e) {
+                // Silently drop down to vector fallback if asset patterns fail to register
+            }
+        }
+        
+        ctx.fillStyle = color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+    
+    this.newPos = function() {
+        this.gravitySpeed += this.gravity;
+        this.x += this.speedX || 0;
+        this.y += (this.speedY || 0) + this.gravitySpeed;
+        this.hitBottom();
+        this.hitTop();
+    }
+    
+    this.hitBottom = function() {
+        var rockbottom = myGameArea.canvas.height - this.height;
+        if (this.y > rockbottom) {
+            this.y = rockbottom;
+            this.gravitySpeed = 0;
+        }
+    }
+
+    this.hitTop = function() {
+        if (this.y < 0) {
+            this.y = 0;
+            this.gravitySpeed = 0;
+        }
+    }
+    
+    this.crashWith = function(otherobj) {
+        var myleft = this.x;
+        var myright = this.x + (this.width);
+        var mytop = this.y;
+        var mybottom = this.y + (this.height);
+        var otherleft = otherobj.x;
+        var otherright = otherobj.x + (otherobj.width);
+        var othertop = otherobj.y;
+        var otherbottom = otherobj.y + (otherobj.height);
+        var crash = true;
+        if ((mybottom < othertop) || (mytop > otherbottom) || (myright < otherleft) || (myleft > otherright)) {
+            crash = false;
+        }
+        return crash;
+    }
+}
+
+function updateGameArea() {
+    var ctx = myGameArea.context;
+    
+    for (var i = 0; i < myObstacles.length; i++) {
+        if (myGamePiece.crashWith(myObstacles[i])) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+            ctx.fillRect(0, 0, myGameArea.canvas.width, myGameArea.canvas.height);
+            ctx.font = "50px Consolas";
+            ctx.fillStyle = "red";
+            ctx.fillText("GAME OVER", myGameArea.canvas.width/2 - 130, myGameArea.canvas.height/2);
+            clearInterval(myGameArea.interval);
+            return; 
+        } 
+    }
+    
+    myGameArea.clear();
+    myGameArea.frameNo += 1;
+    
+    if (GAME_CONFIG.useSprites && bgImg.complete && bgImg.naturalWidth !== 0) {
+        ctx.drawImage(bgImg, 0, 0, myGameArea.canvas.width, myGameArea.canvas.height);
+    }
+    
+    if (myGameArea.frameNo == 1 || everyinterval(GAME_CONFIG.spawnRate)) {
+        var x = myGameArea.canvas.width;
+        var minHeight = GAME_CONFIG.minObstacleHeight;
+        var maxHeight = GAME_CONFIG.maxObstacleHeight;
+        var height = Math.floor(Math.random()*(maxHeight-minHeight+1)+minHeight);
+        
+        var minGap = GAME_CONFIG.minGap;
+        var maxGap = GAME_CONFIG.maxGap;
+        var gap = Math.floor(Math.random()*(maxGap-minGap+1)+minGap);
+        
+        myObstacles.push(new component(40, height, GAME_CONFIG.obstacleColor, x, 0, "topObstacle"));
+        myObstacles.push(new component(40, myGameArea.canvas.height - height - gap, GAME_CONFIG.obstacleColor, x, height + gap, "botObstacle"));
+    }
+    
+    for (var i = 0; i < myObstacles.length; i++) {
+        myObstacles[i].x += GAME_CONFIG.obstacleSpeed;
+        myObstacles[i].update();
+    }
+    
+    myScore.text = "SCORE: " + myGameArea.frameNo;
+    myScore.update();
+    myGamePiece.newPos();
+    myGamePiece.update();
+}
+
+function everyinterval(n) {
+    if ((myGameArea.frameNo / n) % 1 == 0) {return true;}
+    return false;
+}
+
+function accelerate(n) {
+    if(myGamePiece) {
+        myGamePiece.gravity = n;
+    }
+}
+</script>
+</body>
+</html>
