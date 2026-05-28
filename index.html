@@ -13,12 +13,10 @@
     canvas {
         border: 4px solid #34495e;
         border-radius: 8px;
-        background-color: #f1f1f1;
-        background-image: url('background.jpg'); 
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-        background-size: cover;
+        background-color: #34495e; /* Solid fallback background color */
         box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
+        display: block;
+        margin: 0 auto;
     }
     button {
         background-color: #e74c3c;
@@ -30,7 +28,7 @@
         border-radius: 4px;
         cursor: pointer;
         box-shadow: 0 4px #c0392b;
-        margin: 10px;
+        margin: 20px;
     }
     button:active {
         box-shadow: 0 2px #c0392b;
@@ -42,7 +40,6 @@
 
 <div id="game-container"></div>
 
-<br>
 <button onmousedown="accelerate(GAME_CONFIG.playerBoost)" onmouseup="accelerate(GAME_CONFIG.playerGravity)">ACCELERATE</button>
 <p>Use the ACCELERATE button to stay in the air!</p>
 <p>How long can you stay alive?</p>
@@ -72,8 +69,9 @@ const GAME_CONFIG = {
     playerSpriteUrl: "player.png",       
     topObstacleSpriteUrl: "stalactite.png", 
     botObstacleSpriteUrl: "stalagmite.png", 
+    backgroundUrl: "background.jpg",
 
-    // Fallback Colors (Used if useSprites is false)
+    // Fallback Colors (Used if useSprites is false OR images fail to load)
     playerColor: "#e74c3c",      
     obstacleColor: "#2ecc71",    
     textColor: "#ffffff"         
@@ -84,34 +82,24 @@ var myGamePiece;
 var myObstacles = [];
 var myScore;
 
-// Global image elements
-var playerImg = new Image();
-playerImg.src = GAME_CONFIG.playerSpriteUrl;
+// Safely build Image objects
+var playerImg = new Image(); playerImg.src = GAME_CONFIG.playerSpriteUrl;
+var topObstacleImg = new Image(); topObstacleImg.src = GAME_CONFIG.topObstacleSpriteUrl;
+var botObstacleImg = new Image(); botObstacleImg.src = GAME_CONFIG.botObstacleSpriteUrl;
+var bgImg = new Image(); bgImg.src = GAME_CONFIG.backgroundUrl;
 
-var topObstacleImg = new Image();
-topObstacleImg.src = GAME_CONFIG.topObstacleSpriteUrl;
-
-var botObstacleImg = new Image();
-botObstacleImg.src = GAME_CONFIG.botObstacleSpriteUrl;
-
-// Pattern storage variables to prevent stretching
+// Runtime pattern cache
 var topPattern = null;
 var botPattern = null;
 
-// Ensure patterns are created once images load to handle transparency cleanly
-topObstacleImg.onload = function() {
-    if(myGameArea.context) topPattern = myGameArea.context.createPattern(topObstacleImg, 'repeat');
-};
-botObstacleImg.onload = function() {
-    if(myGameArea.context) botPattern = myGameArea.context.createPattern(botObstacleImg, 'repeat');
-};
-
 function startGame() {
+    myGameArea.start();
+    
+    // Create elements AFTER canvas setup to ensure contexts exist
     myGamePiece = new component(40, 40, GAME_CONFIG.playerColor, 10, 120, "player");
     myGamePiece.gravity = GAME_CONFIG.playerGravity;
     
     myScore = new component("30px", "Consolas", GAME_CONFIG.textColor, 30, 40, "text");
-    myGameArea.start();
 }
 
 var myGameArea = {
@@ -124,11 +112,10 @@ var myGameArea = {
         var container = document.getElementById("game-container");
         container.appendChild(this.canvas);
         
-        // Backup pattern creation if images loaded before canvas initialized
-        if (!topPattern && topObstacleImg.complete) topPattern = this.context.createPattern(topObstacleImg, 'repeat');
-        if (!botPattern && botObstacleImg.complete) botPattern = this.context.createPattern(botObstacleImg, 'repeat');
-        
         this.frameNo = 0;
+        
+        // Clear any previous game loop if restarting
+        if (this.interval) clearInterval(this.interval);
         this.interval = setInterval(updateGameArea, 20);
     },
     clear : function() {
@@ -138,119 +125,24 @@ var myGameArea = {
 
 function component(width, height, color, x, y, type) {
     this.type = type;
-    this.score = 0;
     this.width = width;
     this.height = height;
-    this.speedX = 0;
-    this.speedY = 0;    
     this.x = x;
     this.y = y;
     this.gravity = 0;
     this.gravitySpeed = 0;
     
     this.update = function() {
-        ctx = myGameArea.context;
+        var ctx = myGameArea.context;
         
         if (this.type == "text") {
             ctx.font = this.width + " " + this.height;
             ctx.fillStyle = color;
             ctx.fillText(this.text, this.x, this.y);
+            return;
         } 
-        else if (GAME_CONFIG.useSprites) {
-            if (this.type === "player") {
-                ctx.drawImage(playerImg, this.x, this.y, this.width, this.height);
-            } 
-            else if (this.type === "topObstacle" && topPattern) {
-                // Use translate so the seamless pattern scrolls smoothly along with the obstacle coordinate
-                ctx.save();
-                ctx.translate(this.x, this.y);
-                ctx.fillStyle = topPattern;
-                ctx.fillRect(0, 0, this.width, this.height);
-                ctx.restore();
-            } 
-            else if (this.type === "botObstacle" && botPattern) {
-                // Use translate to lock the pattern texture to the obstacle box and avoid distortion
-                ctx.save();
-                ctx.translate(this.x, this.y);
-                ctx.fillStyle = botPattern;
-                ctx.fillRect(0, 0, this.width, this.height);
-                ctx.restore();
-            } 
-            else {
-                ctx.fillStyle = color;
-                ctx.fillRect(this.x, this.y, this.width, this.height);
-            }
-        } 
-        else {
-            ctx.fillStyle = color;
-            ctx.fillRect(this.x, this.y, this.width, this.height);
-        }
-    }
-    
-    this.newPos = function() {
-        this.gravitySpeed += this.gravity;
-        this.x += this.speedX;
-        this.y += this.speedY + this.gravitySpeed;
-        this.hitBottom();
-        this.hitTop();
-    }
-    
-    this.hitBottom = function() {
-        var rockbottom = myGameArea.canvas.height - this.height;
-        if (this.y > rockbottom) {
-            this.y = rockbottom;
-            this.gravitySpeed = 0;
-        }
-    }
 
-    this.hitTop = function() {
-        if (this.y < 0) {
-            this.y = 0;
-            this.gravitySpeed = 0;
-        }
-    }
-    
-    this.crashWith = function(otherobj) {
-        var myleft = this.x;
-        var myright = this.x + (this.width);
-        var mytop = this.y;
-        var mybottom = this.y + (this.height);
-        var otherleft = otherobj.x;
-        var otherright = otherobj.x + (otherobj.width);
-        var othertop = otherobj.y;
-        var otherbottom = otherobj.y + (otherobj.height);
-        var crash = true;
-        if ((mybottom < othertop) || (mytop > otherbottom) || (myright < otherleft) || (myleft > otherright)) {
-            crash = false;
-        }
-        return crash;
-    }
-}
-
-function updateGameArea() {
-    var x, height, gap, minHeight, maxHeight, minGap, maxGap;
-    for (i = 0; i < myObstacles.length; i += 1) {
-        if (myGamePiece.crashWith(myObstacles[i])) {
-            return; 
-        } 
-    }
-    myGameArea.clear();
-    myGameArea.frameNo += 1;
-    
-    if (myGameArea.frameNo == 1 || everyinterval(GAME_CONFIG.spawnRate)) {
-        x = myGameArea.canvas.width;
-        minHeight = GAME_CONFIG.minObstacleHeight;
-        maxHeight = GAME_CONFIG.maxObstacleHeight;
-        height = Math.floor(Math.random()*(maxHeight-minHeight+1)+minHeight);
-        
-        minGap = GAME_CONFIG.minGap;
-        maxGap = GAME_CONFIG.maxGap;
-        gap = Math.floor(Math.random()*(maxGap-minGap+1)+minGap);
-        
-        // Kept at 40px width for chunkier sprite tile presence
-        myObstacles.push(new component(40, height, GAME_CONFIG.obstacleColor, x, 0, "topObstacle"));
-        myObstacles.push(new component(40, x - height - gap, GAME_CONFIG.obstacleColor, x, height + gap, "botObstacle"));
-    }
-    
-    for (i = 0; i < myObstacles.length; i += 1) {
-        myObstacles[i].x += GAME_CONFIG.obstacle
+        // Attempt sprite rendering if turned on
+        if (GAME_CONFIG.useSprites) {
+            try {
+                if (this.type === "player" && player
