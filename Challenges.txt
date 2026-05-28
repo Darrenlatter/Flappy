@@ -1,0 +1,8 @@
+Challenge Ideas for Your Scout Group
+If you are running this as a web design or coding activity, you can give your Scouts these specific tasks to help them learn:
+
+The Custom Theme Challenge: Have them source or draw 4 images: background.jpg, player.png, stalactite.png, and stalagmite.png. Drop them in the same folder as index.html. They can instantly turn it into a space game, an underwater submarine game, or a hiking game.
+
+The "Flappy" Physics Challenge: Ask them to make the controls snappier like Flappy Bird by modifying playerGravity and playerBoost.
+
+The Chaos Mode: Challenge them to set spawnRate to 40 and obstacleSpeed to -5 to see if they can survive for more than 200 points.
